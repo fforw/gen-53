@@ -6,6 +6,7 @@
     "license": "Apache-2.0",
     "dependencies": {
         "domready": "^1.0.8",
+        "glur": "^1.1.2",
         "performance-now": "^2.1.0",
         "simplex-noise": "^3.0.1"
     },
