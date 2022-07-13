@@ -5,6 +5,7 @@
     "author": "Sven Helmberger",
     "license": "Apache-2.0",
     "dependencies": {
+        "d3-polygon": "^3.0.1",
         "domready": "^1.0.8",
         "glur": "^1.1.2",
         "performance-now": "^2.1.0",

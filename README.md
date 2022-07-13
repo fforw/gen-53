@@ -1,8 +1,7 @@
-# gen-50
+# gen-51
 
-Random colored shapes with a masked blur effect.
+Another one with the masked blur effect of gen-50.
 
-At first I was going for a special blur implementation with per-pixel radius off a map, but in the end, I just went with a normal
-blur that is applied in an mapped alpha-transparency like fashion to the original
+This time with layered random polygons which have randomly rounded corners. 
 
-[Live Version](http://fforw.de/static/demo/gen-50/)
+[Live Version](http://fforw.de/static/demo/gen-51/)
