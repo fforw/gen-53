@@ -10,6 +10,7 @@ import isClockwise from "./isClockwise"
 import AABB from "./AABB"
 import weightedRandom from "./weightedRandom"
 import { circle } from "./util"
+import SimplexNoise from "simplex-noise"
 
 const DEBUG_FILL = 0
 const DEBUG_BLURMAP = 0
@@ -23,6 +24,8 @@ const config = {
     height: 0
 };
 
+
+
 /**
  * @type CanvasRenderingContext2D
  */
@@ -35,6 +38,8 @@ let canvas;
 let tmpCtx;
 let tmpCanvas;
 
+let noise
+
 const TO_LINEAR = 2.4
 const FROM_LINEAR = 1/TO_LINEAR
 const BLUR_MAP_BLUR = 10
@@ -46,7 +51,7 @@ function xorPixel(map, x0, y0) {
     if (x0 >= 0 && x0 < width && y0 >= 0 && y0 <= height)
     {
         const off = y0 * width + x0
-        map[off] = 65536 - map[off]
+        map[off] = 65535 - map[off]
     }
 }
 
@@ -136,38 +141,37 @@ const randomOp = weightedRandom([
     2, () => whitePixel,
 ])
 
-function distort(map, shapes)
+function     // const imageData = ctx.getImageData(0, 0, width, height)
+// const copy = createCopy(ctx, imageData)
+//
+// blurRGBA(imageData.data, width, height, 12)
+//
+// const blurMap = createBlurMap(shapes)
+// applyBlurMap(blurMap, imageData, copy)
+// ctx.putImageData(imageData, 0, 0)
+distort(map, shapes)
 {
-    for (let i = 0; i < shapes.length; i++)
+    const { width, height } = config
+
+    const count = Math.round(Math.sqrt(width * height) * 1000)
+
+    for (let i = 0; i < count; i++)
     {
-        const shape = shapes[i]
-        
-        const [[x0,y0],[x1,y1]] = randomTwo(shape)
-        const angle = Math.atan2(y1-y0,x1-x0) + TAU/4
+        const x0 = Math.round(Math.random() * width)
+        const y0 = Math.round(Math.random() * height)
 
-        const polyLen = polygonLength(shape)
+        const angle = TAU * Math.random()
+        const r = Math.pow(Math.random(), 2) * 20
 
-        const count = Math.round((0.7 + Math.random() * 0.3) * polyLen)
-        for (let j=0; j < count; j++)
-        {
-            const [x,y] = randomEdgePoint(shape)
+        const x1 = Math.round(x0 + Math.cos(angle) * r)
+        const y1 = Math.round(y0 + Math.sin(angle) * r)
 
-            const len = Math.round((1 + Math.random() * 1.2) * Math.sqrt(polyLen))
-            const offset = Math.round((-0.4 + 0.4 + Math.random() * 0.4) * polyLen)
-
-            const x0 = Math.round(x + Math.cos(angle) * offset)
-            const y0 = Math.round(y + Math.sin(angle) * offset)
-            const x1 = Math.round(x0 + Math.cos(angle) * len)
-            const y1 = Math.round(y0 + Math.sin(angle) * len)
-
-            let op = randomOp()
-            line(x0, y0, x1, y1, (x,y) => op(map,x,y))
-            if(Math.random() < 0.5)
-            {
-                line(x0+1, y0, x1 + 1, y1, (x,y) => op(map,x,y))
-            }
-        }
+        const src = (y0 * width + x0)
+        const dst = (y1 * width + x1)
+        map[dst] = map[src]
     }
+
+
 }
 
 
@@ -191,7 +195,7 @@ function createBlurMap(shapes)
         const y = Math.round(height * Math.random())
 
         const rnd = Math.random()
-        const size = 150 + Math.pow(rnd, 2) * 200
+        const size = 100 + Math.pow(rnd, 2) * 200
 
         ctx.beginPath()
         ctx.moveTo(x + size, y);
@@ -215,7 +219,6 @@ function createBlurMap(shapes)
     //console.log("before blur", map)
 
     blurMono16(map, width, height, BLUR_MAP_BLUR)
-    distort(map, shapes)
 
     const count = Math.round(20 + Math.random() * 30)
 
@@ -230,6 +233,7 @@ function createBlurMap(shapes)
         circle(x,y,size, (x,y) => greyPixel(map,x,y))
     }
 
+    distort(map, shapes)
     if (DEBUG_BLURMAP)
     {
 
@@ -573,7 +577,7 @@ function glitter(ctx, palette, shapes, multiplier = 1)
         const spread = 10 + Math.pow(Math.random(), 1) * 400
         for (let j = 0; j < count; j++)
         {
-            const radius = 2 + Math.pow(Math.random(), 6) * 40
+            const radius = 4 + Math.pow(Math.random(), 6) * 80
 
             const angle = Math.random() * TAU
             const r = spread * Math.random()
@@ -591,6 +595,71 @@ function glitter(ctx, palette, shapes, multiplier = 1)
     }
 }
 
+function wrap(n, max)
+{
+    const m = n % max
+    if (m < 0)
+    {
+        return max + m
+    }
+    else
+    {
+        return Math.abs(m)
+    }
+}
+
+
+function blurImage(ctx, shapes)
+{
+    const { width, height } = config
+
+
+    const imageData = ctx.getImageData(0, 0, width, height)
+    const { data } = imageData
+
+    const ns = 0.003
+    const e = 0.0015
+    const e2 = e * 2
+    const scale = 14000
+
+
+    for (let y = 0; y < height; y++)
+    {
+        for (let x = 0; x < width; x++)
+        {
+            const nx = x * ns
+            const ny = y * ns
+
+            const v0 = noise.noise3D(     nx   ,        ny,0)
+            const dx = Math.round((noise.noise3D( nx + e,        ny,e) - v0) * scale)
+            const dy = Math.round((noise.noise3D(     nx   , ny + e,-e2) - v0) * scale)
+
+
+            const src = (y * width + x) * 4
+            const dst = (wrap(y + dy, height) * width + wrap(x + dx, width)) * 4
+
+            data[dst] = data[src]
+            data[dst + 1] = data[src + 1]
+            data[dst + 2] = data[src + 2]
+        }
+    }
+
+    ctx.putImageData(imageData, 0, 0)
+
+    {
+        const imageData = ctx.getImageData(0, 0, width, height)
+        const copy = createCopy(ctx, imageData)
+
+        blurRGBA(imageData.data, width, height, 10)
+        blurRGBA(copy.data, width, height, 2)
+
+        const blurMap = createBlurMap(shapes)
+        applyBlurMap(blurMap, imageData, copy)
+        ctx.putImageData(imageData, 0, 0)
+
+    }
+}
+
 
 domready(
     () => {
@@ -598,14 +667,14 @@ domready(
         canvas = document.getElementById("screen");
         ctx = canvas.getContext("2d");
 
-        const width = (window.innerWidth) | 0;
-        const height = (window.innerHeight) | 0;
+        const width = (window.innerWidth * 2) | 0;
+        const height = (window.innerHeight * 2) | 0;
 
         config.width = width;
         config.height = height;
 
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width >> 1;
+        canvas.height = height >> 1;
 
         tmpCanvas = document.createElement("canvas")
         tmpCanvas.width = width;
@@ -619,10 +688,10 @@ domready(
             //const blurRadius = 50//Math.round(4 + Math.random() * 16);
             const palette = randomPaletteWithBlack()
 
-            ctx.fillStyle = "#fff";
-            ctx.fillRect(0,0, width, height);
+            noise = new SimplexNoise()
 
-
+            tmpCtx.fillStyle = "#fff";
+            tmpCtx.fillRect(0,0, width, height);
 
             const bgShape = [
                 [0,0],
@@ -631,13 +700,13 @@ domready(
                 [0,height]
             ];
 
-            ctx.fillStyle = randomFill(ctx, palette, bgShape, 0.4)
-            ctx.fillRect(0,0,width,height)
+            tmpCtx.fillStyle = randomFill(tmpCtx, palette, bgShape, 0.4)
+            tmpCtx.fillRect(0,0,width,height)
 
             const layers = [0.05 + Math.random() * 0.05, 0.3 + Math.random() * 0.3, 1 - Math.random() * 0.3]
             //const layers = [0.8]
 
-            tmpCtx.clearRect(0,0,width,height)
+            //tmpCtx.clearRect(0,0,width,height)
 
             const shapes = []
 
@@ -648,12 +717,12 @@ domready(
 
                 for (let i = 0; i < count; i++)
                 {
-                    const size = 20 + Math.random() * 1000
+                    const size = 40 + Math.random() * 2000
                     const shape = randomShape(size)
                     const roundness = randomBooleans(shape.length)
 
-                    ctx.fillStyle = randomFill(ctx, palette, shape, alpha)
-                    paintShape(ctx, shape, roundness)
+                    tmpCtx.fillStyle = randomFill(tmpCtx, palette, shape, alpha)
+                    paintShape(tmpCtx, shape, roundness)
 
                     if (i > 0)
                     {
@@ -662,20 +731,12 @@ domready(
                 }
             }
 
-            glitter(ctx, palette, shapes, 0.5)
+            glitter(tmpCtx, palette, shapes, 0.5)
+            blurImage(tmpCtx, shapes)
 
-            const imageData = ctx.getImageData(0,0,width, height)
-            const copy = createCopy(ctx, imageData)
+            glitter(tmpCtx, palette, shapes, 0.25)
 
-            blurRGBA(imageData.data, width, height, 12)
-
-            //console.log({shapes})
-
-            const blurMap = createBlurMap(shapes)
-            applyBlurMap(blurMap, imageData, copy)
-            ctx.putImageData(imageData, 0, 0)
-
-            glitter(ctx, palette, shapes, 0.25)
+            ctx.drawImage(tmpCanvas, 0, 0, canvas.width, canvas.height)
 
         }
 

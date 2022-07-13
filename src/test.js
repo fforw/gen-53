@@ -1,7 +1,5 @@
 import domready from "domready"
 import "./style.css"
-import distanceToLine from "./distanceToLine"
-import isClockwise from "./isClockwise"
 
 const PHI = (1 + Math.sqrt(5)) / 2;
 const TAU = Math.PI * 2;
@@ -18,21 +16,46 @@ const config = {
 let ctx;
 let canvas;
 
-let x0,y0
+/**
+ * @type CanvasRenderingContext2D
+ */
+let tmpCtx;
+let tmpCanvas;
 
-function onMouseMove(ev)
+
+function createChecker()
 {
-    x0 = ev.clientX;
-    y0 = ev.clientY;
-}
+    const { width, height} = config
 
+    const imageData = ctx.createImageData(width, height)
+    const { data } = imageData
+
+    let off = 0
+    for (let y = 0 ; y < height ; y++)
+    {
+        for (let x = 0 ; x < width ; x++)
+        {
+            const v = ((x + y) & 1) * 255
+
+            data[off] = v
+            data[off + 1] = v
+            data[off + 2] = v
+            data[off + 3] = 255
+
+            off += 4
+        }
+    }
+
+    return imageData
+}
 
 
 domready(
     () => {
 
         canvas = document.getElementById("screen");
-        ctx = canvas.getContext("2d");
+        tmpCanvas = document.createElement("canvas")
+        ctx = tmpCanvas.getContext("2d");
 
         const width = (window.innerWidth) | 0;
         const height = (window.innerHeight) | 0;
@@ -43,51 +66,24 @@ domready(
         canvas.width = width;
         canvas.height = height;
 
-        x0 = Math.round(width * Math.random())
-        y0 = Math.round(height * Math.random())
+        tmpCanvas.width = width;
+        tmpCanvas.height = height;
 
-        const x1 = Math.round(width * Math.random())
-        const y1 = Math.round(height * Math.random())
-        const x2 = x1//Math.round(width * Math.random())
-        const y2 = Math.round(height * Math.random())
+        tmpCtx = canvas.getContext("2d");
 
         const paint = () => {
-
-
-
-            const d = distanceToLine(x0,y0,x1,y1,x2,y2)
 
             ctx.fillStyle = "#000";
             ctx.fillRect(0,0, width, height);
 
+            ctx.putImageData(createChecker(), 0, 0)
 
-            ctx.strokeStyle = "#fff"
-            ctx.beginPath()
-            ctx.moveTo(x1,y1)
-            ctx.lineTo(x2,y2)
-            ctx.lineTo(x0,y0)
-            ctx.lineTo(x1,y1)
-            ctx.stroke()
 
-            ctx.fillStyle = "#f00"
-            ctx.fillRect(x1-2,y1-2,4,4)
-            ctx.fillStyle = "#0f0"
-            ctx.fillRect(x2-2,y2-2,4,4)
-
-            ctx.fillStyle = "#ff0"
-            ctx.fillRect(x0-2,y0-2,4,4)
-
-            ctx.fillStyle = "#fff"
-            ctx.fillText("Distance = " + d, 30, 30)
-            ctx.fillText("clockwise = " + isClockwise(x1,y1,x2,y2,x0,y0), 30, 50)
-
-            requestAnimationFrame(paint)
+            tmpCtx.drawImage(tmpCanvas, 0 ,0, width >> 1, height >> 1)
         }
 
         paint()
 
         canvas.addEventListener("click", paint, true)
-        canvas.addEventListener("mousemove", onMouseMove, true)
     }
 );
-
