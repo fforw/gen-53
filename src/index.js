@@ -1,5 +1,4 @@
 import domready from "domready"
-import { polygonLength } from "d3-polygon"
 import "./style.css"
 import { randomPaletteWithBlack } from "./randomPalette"
 import blurRGBA from "glur"
@@ -11,6 +10,7 @@ import AABB from "./AABB"
 import weightedRandom from "./weightedRandom"
 import { circle } from "./util"
 import SimplexNoise from "simplex-noise"
+
 
 const DEBUG_FILL = 0
 const DEBUG_BLURMAP = 0
@@ -42,7 +42,7 @@ let noise
 
 const TO_LINEAR = 2.4
 const FROM_LINEAR = 1/TO_LINEAR
-const BLUR_MAP_BLUR = 10
+const BLUR_MAP_BLUR = 50
 
 
 function xorPixel(map, x0, y0) {
@@ -141,19 +141,11 @@ const randomOp = weightedRandom([
     2, () => whitePixel,
 ])
 
-function     // const imageData = ctx.getImageData(0, 0, width, height)
-// const copy = createCopy(ctx, imageData)
-//
-// blurRGBA(imageData.data, width, height, 12)
-//
-// const blurMap = createBlurMap(shapes)
-// applyBlurMap(blurMap, imageData, copy)
-// ctx.putImageData(imageData, 0, 0)
-distort(map, shapes)
+function displacePixels(map, shapes)
 {
     const { width, height } = config
 
-    const count = Math.round(Math.sqrt(width * height) * 1000)
+    const count = Math.round(Math.sqrt(width * height) * 2000)
 
     for (let i = 0; i < count; i++)
     {
@@ -161,7 +153,7 @@ distort(map, shapes)
         const y0 = Math.round(Math.random() * height)
 
         const angle = TAU * Math.random()
-        const r = Math.pow(Math.random(), 2) * 20
+        const r = Math.pow(Math.random(), 2) * 40
 
         const x1 = Math.round(x0 + Math.cos(angle) * r)
         const y1 = Math.round(y0 + Math.sin(angle) * r)
@@ -170,8 +162,6 @@ distort(map, shapes)
         const dst = (y1 * width + x1)
         map[dst] = map[src]
     }
-
-
 }
 
 
@@ -186,16 +176,16 @@ function createBlurMap(shapes)
 
     const ctx = canvas.getContext("2d")
 
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0,0, width, height);
     ctx.fillStyle = "#000";
-    for (let i=0; i < 5; i++)
+    ctx.fillRect(0,0, width, height);
+    ctx.fillStyle = "#fff";
+    for (let i=0; i < 16; i++)
     {
         const x = Math.round(width * Math.random())
         const y = Math.round(height * Math.random())
 
         const rnd = Math.random()
-        const size = 100 + Math.pow(rnd, 2) * 200
+        const size = 100 + Math.pow(rnd, 2) * 100
 
         ctx.beginPath()
         ctx.moveTo(x + size, y);
@@ -219,21 +209,22 @@ function createBlurMap(shapes)
     //console.log("before blur", map)
 
     blurMono16(map, width, height, BLUR_MAP_BLUR)
-
-    const count = Math.round(20 + Math.random() * 30)
-
-    for (let i=0; i < count; i++)
-    {
-        const x = Math.round(width * Math.random())
-        const y = Math.round(height * Math.random())
-
-        const rnd = Math.random()
-        const size = Math.round(25 + rnd * 20)
-
-        circle(x,y,size, (x,y) => greyPixel(map,x,y))
-    }
-
-    distort(map, shapes)
+    
+    //
+    // const count = Math.round(20 + Math.random() * 30)
+    //
+    // for (let i=0; i < count; i++)
+    // {
+    //     const x = Math.round(width * Math.random())
+    //     const y = Math.round(height * Math.random())
+    //
+    //     const rnd = Math.random()
+    //     const size = Math.round(25 + rnd * 20)
+    //
+    //     circle(x,y,size, (x,y) => greyPixel(map,x,y))
+    // }
+    //
+    //displacePixels(map, shapes)
     if (DEBUG_BLURMAP)
     {
 
@@ -609,72 +600,87 @@ function wrap(n, max)
 }
 
 
-function blurImage(ctx, shapes)
+function curlDistortion(ctx)
 {
     const { width, height } = config
-
 
     const imageData = ctx.getImageData(0, 0, width, height)
     const { data } = imageData
 
-    const ns = 0.003
-    const e = 0.0015
-    const e2 = e * 2
-    const scale = 14000
+    const ns0 = 0.0013
+    const ns1 = 0.0017
+    const e = 0.001
+    const scale = 200
 
 
     for (let y = 0; y < height; y++)
     {
         for (let x = 0; x < width; x++)
         {
-            const nx = x * ns
-            const ny = y * ns
+            const angle = (0.5 + noise.noise3D(x * ns0   , y * ns0, 0 ) * 0.5) * TAU
+            const radius = 100//(0.5 + noise.noise3D(y * ns1   , x * ns1, 0.1 ) * 0.5) * scale
+            let ox = Math.cos(angle) * radius
+            let oy = Math.sin(angle) * radius
 
-            const v0 = noise.noise3D(     nx   ,        ny,0)
-            const dx = Math.round((noise.noise3D( nx + e,        ny,e) - v0) * scale)
-            const dy = Math.round((noise.noise3D(     nx   , ny + e,-e2) - v0) * scale)
+            // const v0 = noise.noise2D(     nx   ,        ny)
+            // let ox =(noise.noise2D( nx + e,        ny) - v0) * scale
+            // let oy =(noise.noise2D(     nx   , ny + e) - v0) * scale
+
+            let dx = Math.floor(ox)
+            let dy = Math.floor(oy)
+            let fx = ox - dx
+            let fy = oy - dy
 
 
-            const src = (y * width + x) * 4
-            const dst = (wrap(y + dy, height) * width + wrap(x + dx, width)) * 4
+            const src0 = (wrap(y + dy, height) * width + wrap(x + dx, width)) * 4
+            const src1 = (wrap(y + dy, height) * width + wrap(x + dx + 1, width)) * 4
+            const src2 = (wrap(y + dy + 1, height) * width + wrap(x + dx, width)) * 4
+            const src3 = (wrap(y + dy + 1, height) * width + wrap(x + dx + 1, width)) * 4
+            const dst = (y * width + x) * 4
 
-            data[dst] = data[src]
-            data[dst + 1] = data[src + 1]
-            data[dst + 2] = data[src + 2]
+            const tlr = data[src0    ]
+            const tlg = data[src0 + 1]
+            const tlb = data[src0 + 2]
+            const trr = data[src1    ]
+            const trg = data[src1 + 1]
+            const trb = data[src1 + 2]
+            const blr = data[src2    ]
+            const blg = data[src2 + 1]
+            const blb = data[src2 + 2]
+            const brr = data[src3    ]
+            const brg = data[src3 + 1]
+            const brb = data[src3 + 2]
+
+            const r0 = tlr + (trr - tlr) * fx
+            const g0 = tlg + (trg - tlg) * fx
+            const b0 = tlb + (trb - tlb) * fx
+            const r1 = blr + (brr - blr) * fx
+            const g1 = blg + (brg - blg) * fx
+            const b1 = blb + (brb - blb) * fx
+
+            data[dst    ] = Math.round(r0 + (r1 - r0) * fy)
+            data[dst + 1] = Math.round(g0 + (g1 - g0) * fy)
+            data[dst + 2] = Math.round(b0 + (b1 - b0) * fy)
         }
     }
 
     ctx.putImageData(imageData, 0, 0)
 
-    {
-        const imageData = ctx.getImageData(0, 0, width, height)
-        const copy = createCopy(ctx, imageData)
-
-        blurRGBA(imageData.data, width, height, 10)
-        blurRGBA(copy.data, width, height, 2)
-
-        const blurMap = createBlurMap(shapes)
-        applyBlurMap(blurMap, imageData, copy)
-        ctx.putImageData(imageData, 0, 0)
-
-    }
 }
-
-
 domready(
     () => {
 
         canvas = document.getElementById("screen");
         ctx = canvas.getContext("2d");
 
-        const width = (window.innerWidth * 2) | 0;
-        const height = (window.innerHeight * 2) | 0;
+        const width = (window.innerWidth) | 0;
+        const height = (window.innerHeight) | 0;
 
-        config.width = width;
-        config.height = height;
+        config.width = width
+        config.height = height
 
-        canvas.width = width >> 1;
-        canvas.height = height >> 1;
+        canvas.width = width
+        canvas.height = height
 
         tmpCanvas = document.createElement("canvas")
         tmpCanvas.width = width;
@@ -731,10 +737,34 @@ domready(
                 }
             }
 
-            glitter(tmpCtx, palette, shapes, 0.5)
-            blurImage(tmpCtx, shapes)
+            // const lineCount = 50 + Math.random() * 500
+            // for (let i = 0; i < lineCount; i++)
+            // {
+            //     const x = Math.round(Math.random() * width)
+            //     const y = Math.round(Math.random() * height)
+            //     const l = Math.round(200 + Math.random() * 200)
+            //     const w = Math.round(0.5 + Math.random() * 5)
+            //
+            //     tmpCtx.strokeStyle = Color.from(palette[0] ).toRGBA(0.5)
+            //     tmpCtx.lineWidth = w
+            //     tmpCtx.beginPath()
+            //     tmpCtx.moveTo(x,y)
+            //     tmpCtx.lineTo(x + l, y)
+            //     tmpCtx.stroke()
+            // }
 
-            glitter(tmpCtx, palette, shapes, 0.25)
+            //glitter(tmpCtx, palette, shapes, 0.5)
+
+            const copy = tmpCtx.getImageData(0, 0, width, height)
+            curlDistortion(tmpCtx)
+
+            const imageData = tmpCtx.getImageData(0, 0, width, height)
+
+            const blurMap = createBlurMap(shapes)
+            applyBlurMap(blurMap, imageData, copy)
+            tmpCtx.putImageData(imageData, 0, 0)
+
+            //glitter(tmpCtx, palette, shapes, 0.25)
 
             ctx.drawImage(tmpCanvas, 0, 0, canvas.width, canvas.height)
 
